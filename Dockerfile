@@ -12,3 +12,4 @@ FROM alpine:latest
 COPY --from=builder /go/bin/ica-caldav /go/bin/ica-caldav
 VOLUME /org
 CMD ["/bin/sh", "-c", "/go/bin/ica-caldav"]
+EXPOSE 8080
