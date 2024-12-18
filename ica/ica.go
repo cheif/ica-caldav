@@ -16,9 +16,16 @@ func New(sessionId string) ICA {
     return ICA { sessionId }
 }
 
+type ShoppingListRow struct {
+    Id string `json:"id"`
+    Name string `json:"text"`
+    IsStriked bool `json:"isStriked"`
+}
+
 type ShoppingList struct {
     Id string `json:"id"`
     Name string `json:"name"`
+    Rows []ShoppingListRow `json:"rows"`
 }
 
 func (ica *ICA) GetShoppingLists() ([]ShoppingList, error) {
