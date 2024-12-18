@@ -1,28 +1,58 @@
 package main
 
 import (
-	"fmt"
+    "bytes"
+    "io"
+    "time"
+	"ica-caldav/ica"
+    "net/http"
+	"log"
+	"log/slog"
 	"os"
 
-    "ica-caldav/ica"
+	"github.com/emersion/go-webdav/caldav"
 )
 
 
 func main() {
     sessionId := os.Getenv("SESSION_ID")
     ica := ica.New(sessionId)
-    lists, err := ica.GetShoppingLists()
-    if err != nil {
-        fmt.Printf("Error: %v", err)
-    }
-    fmt.Println(lists)
-    items, err := ica.SearchItem("Vaniljglass")
-    if err != nil {
-        fmt.Printf("Error: %v", err)
-    }
-    fmt.Println(items)
-    err = ica.AddItem(lists[0], items[0])
-    if err != nil {
-        fmt.Printf("Error: %v", err)
-    }
+    backend := NewIcaBackend(&ica)
+    handler := caldav.Handler{Backend: backend}
+
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	slog.SetDefault(logger)
+	slog.Info("Starting")
+
+    log.Fatal(http.ListenAndServe(":8080", WithLogging(&handler)))
+}
+
+func WithLogging(h http.Handler) http.Handler {
+	logFn := func(rw http.ResponseWriter, r *http.Request) {
+		lrw := LoggingResponseWriter{rw, ""}
+		body, _ := io.ReadAll(r.Body)
+		r.Body = io.NopCloser(bytes.NewBuffer(body))
+		start := time.Now()
+
+		h.ServeHTTP(&lrw, r) // serve the original request
+
+		timeElapsed := time.Since(start)
+		// log request details
+		slog.Info("Request",
+			"method", r.Method,
+			"uri", r.RequestURI,
+			"duration", timeElapsed,
+		)
+	}
+	return http.HandlerFunc(logFn)
+}
+
+type LoggingResponseWriter struct {
+	http.ResponseWriter
+	body string
+}
+
+func (r *LoggingResponseWriter) Write(b []byte) (int, error) {
+	r.body += string(b)
+	return r.ResponseWriter.Write(b)
 }

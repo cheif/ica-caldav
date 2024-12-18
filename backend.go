@@ -1,0 +1,172 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"ica-caldav/ica"
+	"log/slog"
+	"path/filepath"
+
+	"github.com/emersion/go-ical"
+	"github.com/emersion/go-webdav/caldav"
+)
+
+func NewIcaBackend(ica *ica.ICA) *ICABackend {
+	return &ICABackend{
+        ica: ica,
+	}
+}
+
+type ICABackend struct {
+    ica *ica.ICA
+}
+
+func (be *ICABackend) CurrentUserPrincipal(ctx context.Context) (string, error) {
+	return "/user/", nil
+}
+
+func (be *ICABackend) CalendarHomeSetPath(ctx context.Context) (string, error) {
+	return "/user/shoppinglists/", nil
+}
+
+func (be *ICABackend) ListCalendars(ctx context.Context) ([]caldav.Calendar, error) {
+    lists, err := be.ica.GetShoppingLists()
+	if err != nil {
+		return nil, err
+	}
+	var calendars = make([]caldav.Calendar, 0)
+	for _, list := range lists {
+		calendars = append(calendars, createCalendar(list))
+	}
+	return calendars, nil
+}
+
+func (be *ICABackend) GetCalendar(ctx context.Context, path string) (*caldav.Calendar, error) {
+    list, err := be.getList(path)
+	if err != nil {
+		return nil, err
+	}
+    cal := createCalendar(*list)
+    return &cal, nil
+}
+
+func (be *ICABackend) ListCalendarObjects(ctx context.Context, path string, req *caldav.CalendarCompRequest) ([]caldav.CalendarObject, error) {
+    list, err := be.getList(path)
+	if err != nil {
+		return nil, err
+	}
+	calendarObjects := make([]caldav.CalendarObject, 0)
+    for _, row := range list.Rows {
+        calendarObjects = append(calendarObjects, 
+            createCalendarObject(
+                row,
+                fmt.Sprintf("%s%s", path, row.Id),
+                ),
+            )
+	}
+    slog.Info("Listing objects",
+        "list", list.Name,
+        "count", len(calendarObjects),
+        )
+	return calendarObjects, nil
+}
+
+
+func (be *ICABackend) GetCalendarObject(ctx context.Context, path string, req *caldav.CalendarCompRequest) (*caldav.CalendarObject, error) {
+    listPath, id := filepath.Split(path)
+    list, err := be.getList(listPath)
+    if err != nil {
+        slog.Error("Could not find list",
+            "path", listPath,
+            )
+        return nil, err
+    }
+    for _, row := range list.Rows {
+        if row.Id == id {
+            cal := createCalendarObject(row, path)
+            return &cal, nil
+        }
+    }
+    slog.Error("Could not find item",
+        "path", path,
+        )
+    return nil, fmt.Errorf("Not found")
+}
+
+// Utilities
+func (be *ICABackend) getList(path string) (*ica.ShoppingList, error) {
+	id, err := filepath.Rel("/user/shoppinglists/", path)
+    lists, err := be.ica.GetShoppingLists()
+	if err != nil {
+		return nil, err
+	}
+    for _, list := range lists {
+        if list.Id == id {
+            return &list, nil
+        }
+    }
+    return nil, fmt.Errorf("Not Found")
+}
+
+func createCalendar(list ica.ShoppingList) caldav.Calendar {
+    return caldav.Calendar {
+        Path:                  fmt.Sprintf("/user/shoppinglists/%s/", list.Id),
+        Name:                  list.Name,
+        MaxResourceSize:       1000,
+        SupportedComponentSet: []string{"VTODO"},
+    }
+}
+
+
+func createCalendarObject(row ica.ShoppingListRow, path string) caldav.CalendarObject {
+	cal := ical.NewCalendar()
+	cal.Props.SetText(ical.PropVersion, "2.0")
+	cal.Props.SetText(ical.PropProductID, "-//xyz Corp//NONSGML PDA Calendar Version 1.0//EN")
+	cal.Children = []*ical.Component{
+		createEvent(row).Component,
+	}
+	return caldav.CalendarObject{
+		Path:    path,
+		Data:    cal,
+        ModTime: row.Updated,
+        ETag: row.ETag(),
+	}
+}
+
+func createEvent(row ica.ShoppingListRow) ical.Event {
+	event := ical.NewEvent()
+	event.Name = ical.CompToDo
+	event.Props.SetText(ical.PropUID, row.Id)
+	event.Props.SetDateTime(ical.PropDateTimeStamp, row.Updated)
+	event.Props.SetText(ical.PropSummary, row.Name)
+	event.Props.SetText(ical.PropDescription, "")
+    if row.IsStriked {
+        // We just assume that it was striked out when last updated
+        event.Props.SetDateTime(ical.PropCompleted, row.Updated)
+    }
+	return *event
+}
+
+
+// Not implemented, but required by interface
+func (be *ICABackend) CreateCalendar(ctx context.Context, calendar *caldav.Calendar) error {
+    return fmt.Errorf("Not implemented")
+}
+
+func (be *ICABackend) DeleteCalendar(ctx context.Context, calendar *caldav.Calendar) error {
+    return fmt.Errorf("Not implemented")
+}
+
+
+func (be *ICABackend) DeleteCalendarObject(ctx context.Context, path string) error {
+    return fmt.Errorf("Not implemented")
+}
+
+func (be *ICABackend) PutCalendarObject(ctx context.Context, path string, calendar *ical.Calendar, opts *caldav.PutCalendarObjectOptions) (obj *caldav.CalendarObject, err error) {
+    return nil, fmt.Errorf("Not implemented")
+}
+
+func (be *ICABackend) QueryCalendarObjects(ctx context.Context, path string, query *caldav.CalendarQuery) ([]caldav.CalendarObject, error) {
+	return nil, fmt.Errorf("Not implemented")
+}
+
