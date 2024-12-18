@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 )
 
 type ICA struct {
@@ -20,11 +21,13 @@ type ShoppingListRow struct {
     Id string `json:"id"`
     Name string `json:"text"`
     IsStriked bool `json:"isStriked"`
+    Updated time.Time `json:"updated"`
 }
 
 type ShoppingList struct {
     Id string `json:"id"`
     Name string `json:"name"`
+    Updated time.Time `json:"updated"`
     Rows []ShoppingListRow `json:"rows"`
 }
 
