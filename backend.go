@@ -122,11 +122,11 @@ func (be *ICABackend) PutCalendarObject(ctx context.Context, path string, calend
 		}
 	}
 
-    completed, _ := todo.Props.DateTime(ical.PropCompleted, time.Local)
-    if !completed.IsZero() {
-        // We don't want to add already completed items
-        return nil, fmt.Errorf("Adding completed items isn't supported")
-    }
+	completed, _ := todo.Props.DateTime(ical.PropCompleted, time.Local)
+	if !completed.IsZero() {
+		// We don't want to add already completed items
+		return nil, fmt.Errorf("Adding completed items isn't supported")
+	}
 
 	toAdd := ica.ItemToAdd{
 		Name: name,
