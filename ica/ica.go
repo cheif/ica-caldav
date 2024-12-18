@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"time"
+
+	"github.com/mitchellh/hashstructure/v2"
 )
 
 type ICA struct {
@@ -22,6 +24,11 @@ type ShoppingListRow struct {
     Name string `json:"text"`
     IsStriked bool `json:"isStriked"`
     Updated time.Time `json:"updated"`
+}
+
+func (row *ShoppingListRow) ETag() string {
+	hash, _ := hashstructure.Hash(row, hashstructure.FormatV2, nil)
+	return fmt.Sprintf("%v", hash)
 }
 
 type ShoppingList struct {
