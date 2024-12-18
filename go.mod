@@ -7,4 +7,5 @@ require (
 	github.com/emersion/go-webdav v0.6.0 // indirect
 	github.com/mitchellh/hashstructure/v2 v2.0.2 // indirect
 	github.com/teambition/rrule-go v1.8.2 // indirect
+	golang.org/x/text v0.21.0 // indirect
 )

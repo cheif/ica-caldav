@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/mitchellh/hashstructure/v2"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 )
 
 type ICA struct {
@@ -47,6 +49,13 @@ func (ica *ICA) GetShoppingLists() ([]ShoppingList, error) {
     err = json.Unmarshal(data, &lists)
     if err != nil {
         return nil, err
+    }
+    caser := cases.Title(language.Swedish)
+    for i, list := range lists {
+        for j, row := range list.Rows {
+            list.Rows[j].Name = caser.String(row.Name)
+        }
+        lists[i] = list
     }
     return lists, nil
 }
