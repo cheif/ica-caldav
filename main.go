@@ -34,12 +34,8 @@ func WithLogging(ica *ica.ICA, h http.Handler) http.Handler {
 		r.Body = io.NopCloser(bytes.NewBuffer(body))
 		start := time.Now()
 
-		// Send in all lists with context, for performance reasons
-		lists, err := ica.GetShoppingLists()
-		if err != nil {
-			slog.Error("How to handle this?")
-		}
-		newContext := context.WithValue(r.Context(), "shoppinglists", lists)
+		// Send in a list-cache, for performance
+		newContext := context.WithValue(r.Context(), "listCache", ListCache{ica: ica})
 		h.ServeHTTP(&lrw, r.WithContext(newContext)) // serve the original request
 
 		timeElapsed := time.Since(start)

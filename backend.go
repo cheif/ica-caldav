@@ -92,17 +92,31 @@ func (be *ICABackend) GetCalendarObject(ctx context.Context, path string, req *c
 	return nil, fmt.Errorf("Not found")
 }
 
+type ListCache struct {
+	ica   *ica.ICA
+	Lists []ica.ShoppingList
+}
+
+func (c *ListCache) GetShoppingLists() ([]ica.ShoppingList, error) {
+	if len(c.Lists) > 0 {
+		return c.Lists, nil
+	}
+	lists, err := c.ica.GetShoppingLists()
+	c.Lists = lists
+	return lists, err
+}
+
 // Utilities
 func (be *ICABackend) getList(ctx context.Context, path string) (*ica.ShoppingList, error) {
 
 	// Try using pre-fetched lists from context first
-	lists, ok := ctx.Value("shoppinglists").([]ica.ShoppingList)
+	listCache, ok := ctx.Value("listCache").(ListCache)
 	if !ok {
-		var err error
-		lists, err = be.ica.GetShoppingLists()
-		if err != nil {
-			return nil, err
-		}
+		panic("")
+	}
+	lists, err := listCache.GetShoppingLists()
+	if err != nil {
+		return nil, err
 	}
 
 	id, err := filepath.Rel("/user/shoppinglists/", path)
