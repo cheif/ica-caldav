@@ -93,31 +93,44 @@ func (be *ICABackend) GetCalendarObject(ctx context.Context, path string, req *c
 }
 
 func (be *ICABackend) PutCalendarObject(ctx context.Context, path string, calendar *ical.Calendar, opts *caldav.PutCalendarObjectOptions) (obj *caldav.CalendarObject, err error) {
-    todo, err := getTodo(calendar)
-    if err != nil {
-        return nil, err
-    }
+	todo, err := getTodo(calendar)
+	if err != nil {
+		return nil, err
+	}
 
 	name, err := todo.Props.Text(ical.PropSummary)
-    if err != nil {
-        return nil, err
-    }
+	if err != nil {
+		return nil, err
+	}
+	id, err := todo.Props.Text(ical.PropUID)
+	if err != nil {
+		return nil, err
+	}
 
 	listPath, _ := filepath.Split(path)
 	list, err := be.getList(ctx, listPath)
 	if err != nil {
 		return nil, err
 	}
-    toAdd := ica.ItemToAdd {
-        Name: name,
-    }
-    row, err := be.ica.AddItem(*list, toAdd)
-    if err != nil {
-        return nil, err
-    }
-    newPath := fmt.Sprintf("%v/%v", listPath, row.Id)
-    cal := createCalendarObject(*row, newPath)
-    return &cal, nil
+	for _, row := range list.Rows {
+		if row.Id == id {
+			// This just means something (Apple reminder) tries to update the items (for some reason).
+			// We just ignore these cases
+			cal := createCalendarObject(row, path)
+			return &cal, nil
+		}
+	}
+
+	toAdd := ica.ItemToAdd{
+		Name: name,
+	}
+	row, err := be.ica.AddItem(*list, toAdd)
+	if err != nil {
+		return nil, err
+	}
+	newPath := fmt.Sprintf("%v/%v", listPath, row.Id)
+	cal := createCalendarObject(*row, newPath)
+	return &cal, nil
 }
 
 // Cache
