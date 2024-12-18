@@ -4,7 +4,7 @@ WORKDIR $GOPATH/src/ica-caldav
 COPY go.mod go.sum .
 RUN go mod download
 COPY . .
-RUN go get -d -v
+RUN go get -v
 RUN --mount=type=cache,target=/root/.cache/go-build \
             go build -o /go/bin/ica-caldav
 
@@ -12,4 +12,3 @@ FROM alpine:latest
 COPY --from=builder /go/bin/ica-caldav /go/bin/ica-caldav
 VOLUME /org
 CMD ["/bin/sh", "-c", "/go/bin/ica-caldav"]
-EXPOSE 8080

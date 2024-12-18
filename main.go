@@ -24,7 +24,7 @@ func main() {
 	slog.SetDefault(logger)
 	slog.Info("Starting")
 
-	log.Fatal(http.ListenAndServe(":8080", WithLogging(&ica, &handler)))
+	log.Fatal(http.ListenAndServe(":5000", WithLogging(&ica, &handler)))
 }
 
 func WithLogging(ica *ica.ICA, h http.Handler) http.Handler {
