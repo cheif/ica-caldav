@@ -80,27 +80,24 @@ func (ica *ICA) SearchItem(name string) ([]Suggestion, error) {
     return response.Documents, err
 }
 
-type ShoppingListItem struct {
+type ItemToAdd struct {
     Name string `json:"text"`
     Article *Suggestion `json:"article"`
 }
 
-func (ica *ICA) AddItem(list ShoppingList, suggestion Suggestion) error {
-    item := ShoppingListItem {
-        Name: suggestion.Name,
-        Article: &suggestion,
-    }
-    return ica.addItem(list, item)
-}
-
-func (ica *ICA) addItem(list ShoppingList, item ShoppingListItem) error {
+func (ica *ICA) AddItem(list ShoppingList, item ItemToAdd) (*ShoppingListRow, error) {
     path := fmt.Sprintf("shopping-list/v1/api/list/%v/row", list.Id)
     data, err := json.Marshal(item)
     if err != nil {
-        return err
+        return nil, err
     }
-    _, err = ica.post(path, data)
-    return err
+    data, err = ica.post(path, data)
+    if err != nil {
+        return nil, err
+    }
+    var row ShoppingListRow
+    err = json.Unmarshal(data, &row)
+    return &row, err
 }
 
 func (ica *ICA) get(path string) ([]byte, error) {

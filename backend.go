@@ -92,6 +92,35 @@ func (be *ICABackend) GetCalendarObject(ctx context.Context, path string, req *c
 	return nil, fmt.Errorf("Not found")
 }
 
+func (be *ICABackend) PutCalendarObject(ctx context.Context, path string, calendar *ical.Calendar, opts *caldav.PutCalendarObjectOptions) (obj *caldav.CalendarObject, err error) {
+    todo, err := getTodo(calendar)
+    if err != nil {
+        return nil, err
+    }
+
+	name, err := todo.Props.Text(ical.PropSummary)
+    if err != nil {
+        return nil, err
+    }
+
+	listPath, _ := filepath.Split(path)
+	list, err := be.getList(ctx, listPath)
+	if err != nil {
+		return nil, err
+	}
+    toAdd := ica.ItemToAdd {
+        Name: name,
+    }
+    row, err := be.ica.AddItem(*list, toAdd)
+    if err != nil {
+        return nil, err
+    }
+    newPath := fmt.Sprintf("%v/%v", listPath, row.Id)
+    cal := createCalendarObject(*row, newPath)
+    return &cal, nil
+}
+
+// Cache
 type ListCache struct {
 	ica   *ica.ICA
 	Lists []ica.ShoppingList
@@ -169,6 +198,15 @@ func createEvent(row ica.ShoppingListRow) ical.Event {
 	return *event
 }
 
+func getTodo(calendar *ical.Calendar) (*ical.Component, error) {
+	for _, child := range calendar.Children {
+		if child.Name == ical.CompToDo {
+			return child, nil
+		}
+	}
+	return nil, fmt.Errorf("Unsupported number of children")
+}
+
 // Not implemented, but required by interface
 func (be *ICABackend) CreateCalendar(ctx context.Context, calendar *caldav.Calendar) error {
 	return fmt.Errorf("Not implemented")
@@ -180,10 +218,6 @@ func (be *ICABackend) DeleteCalendar(ctx context.Context, calendar *caldav.Calen
 
 func (be *ICABackend) DeleteCalendarObject(ctx context.Context, path string) error {
 	return fmt.Errorf("Not implemented")
-}
-
-func (be *ICABackend) PutCalendarObject(ctx context.Context, path string, calendar *ical.Calendar, opts *caldav.PutCalendarObjectOptions) (obj *caldav.CalendarObject, err error) {
-	return nil, fmt.Errorf("Not implemented")
 }
 
 func (be *ICABackend) QueryCalendarObjects(ctx context.Context, path string, query *caldav.CalendarQuery) ([]caldav.CalendarObject, error) {
