@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"ica-caldav/ica"
 	"io"
 	"log"
@@ -25,10 +24,7 @@ func main() {
 		&ica,
 	)
 
-	htmlHandler := http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(rw, "Hello, world")
-	})
-
+	htmlHandler := newServerForSetup(&ica)
 	handler := mux(htmlHandler, caldavHandler)
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
