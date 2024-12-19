@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -36,11 +37,12 @@ func main() {
 
 func mux(htmlHandler http.Handler, caldavHandler http.Handler) http.Handler {
 	return http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
-		// Use html-handler if html, else caldav
-		if strings.Contains(r.Header.Get("Accept"), "text/html") {
-			htmlHandler.ServeHTTP(rw, r)
-		} else {
+		// Use caldav handler if it's a `/user` path, or a non-supported html method
+		htmlMethods := []string{http.MethodGet, http.MethodPost}
+		if strings.HasPrefix(r.URL.Path, "/user") || !slices.Contains(htmlMethods, r.Method) {
 			caldavHandler.ServeHTTP(rw, r)
+		} else {
+			htmlHandler.ServeHTTP(rw, r)
 		}
 	})
 }
