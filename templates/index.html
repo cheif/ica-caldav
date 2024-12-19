@@ -1,0 +1,12 @@
+<html>
+    <body>
+        <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+        <!-- have a button POST a click via AJAX -->
+        <h1>Setup with BankID</h1>
+        <div id="bank-id">
+            <button hx-post="/start" hx-swap="outerHTML">
+                Start setup
+            </button>
+        </div>
+    </body>
+</html>
