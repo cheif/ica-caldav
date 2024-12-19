@@ -3,12 +3,14 @@ package main
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"ica-caldav/ica"
 	"io"
 	"log"
 	"log/slog"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/emersion/go-webdav/caldav"
@@ -18,16 +20,33 @@ func main() {
 	sessionId := os.Getenv("SESSION_ID")
 	ica := ica.New(sessionId)
 	backend := NewIcaBackend(&ica)
-	handler := withListCache(
+	caldavHandler := withListCache(
 		&caldav.Handler{Backend: backend},
 		&ica,
 	)
+
+	htmlHandler := http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(rw, "Hello, world")
+	})
+
+	handler := mux(htmlHandler, caldavHandler)
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	slog.SetDefault(logger)
 	slog.Info("Starting")
 
 	log.Fatal(http.ListenAndServe(":5000", withLogging(handler)))
+}
+
+func mux(htmlHandler http.Handler, caldavHandler http.Handler) http.Handler {
+	return http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		// Use html-handler if html, else caldav
+		if strings.Contains(r.Header.Get("Accept"), "text/html") {
+			htmlHandler.ServeHTTP(rw, r)
+		} else {
+			caldavHandler.ServeHTTP(rw, r)
+		}
+	})
 }
 
 func withListCache(h http.Handler, ica *ica.ICA) http.Handler {
