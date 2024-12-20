@@ -13,6 +13,10 @@ import (
 	"golang.org/x/text/language"
 )
 
+type SessionProvider interface {
+	GetSession() (*ICA, error)
+}
+
 type ICA struct {
 	sessionId string
 }

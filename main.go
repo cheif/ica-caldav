@@ -17,15 +17,12 @@ import (
 )
 
 func main() {
-	sessionId := os.Getenv("SESSION_ID")
-	ica := ica.New(sessionId)
-	backend := NewIcaBackend(&ica)
+	authenticator := ica.NewBankIDAuthentication()
+	htmlHandler := newServerForSetup(&authenticator)
 	caldavHandler := withListCache(
-		&caldav.Handler{Backend: backend},
-		&ica,
+		&authenticator,
 	)
 
-	htmlHandler := newServerForSetup(&ica)
 	handler := mux(htmlHandler, caldavHandler)
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
@@ -47,11 +44,19 @@ func mux(htmlHandler http.Handler, caldavHandler http.Handler) http.Handler {
 	})
 }
 
-func withListCache(h http.Handler, ica *ica.ICA) http.Handler {
+func withListCache(provider ica.SessionProvider) http.Handler {
 	return http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
-		// Send in a list-cache, for performance
-		newContext := context.WithValue(r.Context(), "listCache", ListCache{ica: ica})
-		h.ServeHTTP(rw, r.WithContext(newContext))
+		session, err := provider.GetSession()
+		if err != nil {
+			// Handle error here, now we just timeout?
+			return
+		} else {
+			backend := NewIcaBackend(session)
+			handler := caldav.Handler{Backend: backend}
+			// Send in a list-cache, for performance
+			newContext := context.WithValue(r.Context(), "listCache", ListCache{ica: session})
+			handler.ServeHTTP(rw, r.WithContext(newContext))
+		}
 	})
 }
 

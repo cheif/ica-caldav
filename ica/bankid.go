@@ -14,10 +14,9 @@ import (
 
 type BankIDAuthenticator struct {
 	client *http.Client
-	ica    *ICA
 }
 
-func NewBankIDAuthentication(ica *ICA) BankIDAuthenticator {
+func NewBankIDAuthentication() BankIDAuthenticator {
 	jar, err := cookiejar.New(nil)
 	if err != nil {
 		panic(err)
@@ -25,7 +24,7 @@ func NewBankIDAuthentication(ica *ICA) BankIDAuthenticator {
 	client := &http.Client{
 		Jar: jar,
 	}
-	return BankIDAuthenticator{client, ica}
+	return BankIDAuthenticator{client}
 }
 
 func (a *BankIDAuthenticator) Start() error {
@@ -72,40 +71,62 @@ func (a *BankIDAuthenticator) State() (isFinished bool, qrCode string, err error
 		return false, response.Message.QRCode, nil
 	}
 
-	// We're finished, fetch the real token
-	session, err := a.finish()
+	// We're done polling, finish up
+	err = a.finish()
 	if err != nil {
 		return false, "", err
 	}
-
-	// Set the session on the actual ica-session
-	a.ica.setSessionId(session)
 	return true, "", nil
 }
 
-func (a *BankIDAuthenticator) finish() (string, error) {
+func (a *BankIDAuthenticator) finish() error {
 	// Post that we're done, this will return us a html-form with some important values
 	form := url.Values{}
 	form.Set("_pollingDone", "true")
 	payload := bytes.NewBufferString(form.Encode())
 	resp, err := a.client.Post("https://ims.icagruppen.se/authn/authenticate/icase-bankid-qr/launch", "application/x-www-form-urlencoded", payload)
 	if err != nil {
-		return "", err
+		return err
 	}
 
 	// Parse out URL/form data from the above form, so that we can POST it
 	redirectRequest, err := parseRedirectRequest(resp)
 	if err != nil {
-		return "", err
+		return err
 	}
 
-	resp, err = a.client.Do(redirectRequest)
+	_, err = a.client.Do(redirectRequest)
+	if err != nil {
+		return err
+	}
+
+	// Verify that we have a valid session
+	if !a.HasValidSession() {
+		return fmt.Errorf("No valid session")
+	}
+	return err
+}
+
+func (a *BankIDAuthenticator) HasValidSession() bool {
+	_, err := a.getSessionValue()
+	return err == nil
+}
+
+func (a *BankIDAuthenticator) GetSession() (*ICA, error) {
+	session, err := a.getSessionValue()
+	if err != nil {
+		return nil, err
+	}
+	return &ICA{sessionId: session}, nil
+}
+
+func (a *BankIDAuthenticator) getSessionValue() (string, error) {
+	// Now we should be done, and have a valid `thSession` cookie
+	icaURL, err := url.Parse("https://www.ica.se")
 	if err != nil {
 		return "", err
 	}
-
-	// Now we should be done, and have a valid `thSession` cookie
-	for _, cookie := range a.client.Jar.Cookies(resp.Request.URL) {
+	for _, cookie := range a.client.Jar.Cookies(icaURL) {
 		if cookie.Name == "thSessionId" {
 			return cookie.Value, nil
 		}

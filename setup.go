@@ -7,10 +7,8 @@ import (
 	"text/template"
 )
 
-func newServerForSetup(icaSession *ica.ICA) http.Handler {
+func newServerForSetup(authenticator *ica.BankIDAuthenticator) http.Handler {
 	mux := http.NewServeMux()
-
-	authenticator := ica.NewBankIDAuthentication(icaSession)
 
 	mux.HandleFunc("/", func(rw http.ResponseWriter, r *http.Request) {
 		// TODO: Check if we actually need setup first
