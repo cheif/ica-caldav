@@ -1,12 +1,19 @@
 <html>
+    <link rel="stylesheet" href="https://unpkg.com/missing.css@1.1.3">
     <body>
-        <script src="https://unpkg.com/htmx.org@2.0.4"></script>
-        <!-- have a button POST a click via AJAX -->
-        <h1>Setup with BankID</h1>
-        <div id="bank-id">
-            <button hx-post="/start" hx-swap="outerHTML">
-                Start setup
-            </button>
-        </div>
+        <main>
+            <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+
+            <header>
+                <h1>Welcome</h1>
+            </header>
+
+            <fieldset id="bank-id" hx-target="this">
+                <legend>Setup with BankID</legend>
+                <button hx-post="/start" hx-swap="outerHTML">
+                    Start
+                </button>
+            </fieldset>
+        </main>
     </body>
 </html>
