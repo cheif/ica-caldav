@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
@@ -12,19 +13,49 @@ import (
 	"strings"
 )
 
-type BankIDAuthenticator struct {
-	client *http.Client
+type Cache interface {
+	ReadFile(string) ([]byte, error)
+	WriteFile(string, []byte) error
 }
 
-func NewBankIDAuthentication() BankIDAuthenticator {
+type BankIDAuthenticator struct {
+	sessionCache Cache
+	client       *http.Client
+}
+
+func NewBankIDAuthentication(cache Cache) BankIDAuthenticator {
+	jar := createCookieJar(cache)
+	client := &http.Client{
+		Jar: jar,
+	}
+	return BankIDAuthenticator{cache, client}
+}
+
+func createCookieJar(cache Cache) http.CookieJar {
 	jar, err := cookiejar.New(nil)
 	if err != nil {
 		panic(err)
 	}
-	client := &http.Client{
-		Jar: jar,
+	// Try reading cookies from session file
+	slog.Info("Starting read")
+	data, err := cache.ReadFile("session.json")
+	slog.Info("Read done")
+	if err != nil {
+		slog.Info("No cached session found", err)
+		return jar
 	}
-	return BankIDAuthenticator{client}
+	var cookies []*http.Cookie
+	err = json.Unmarshal(data, &cookies)
+	if err != nil {
+		slog.Info("Corrupt cache found", err)
+		return jar
+	}
+	icaURL, err := url.Parse("https://www.ica.se")
+	if err != nil {
+		return jar
+	}
+	jar.SetCookies(icaURL, cookies)
+	return jar
 }
 
 func (a *BankIDAuthenticator) Start() error {
@@ -104,6 +135,20 @@ func (a *BankIDAuthenticator) finish() error {
 	if !a.HasValidSession() {
 		return fmt.Errorf("No valid session")
 	}
+
+	icaURL, err := url.Parse("https://www.ica.se")
+	if err == nil {
+		// Write cookies to session file
+		cookies := a.client.Jar.Cookies(icaURL)
+		data, err := json.Marshal(cookies)
+		if err == nil {
+			err = a.sessionCache.WriteFile("session.json", data)
+			if err != nil {
+				slog.Error("Error writing cache", err)
+			}
+		}
+	}
+
 	return err
 }
 

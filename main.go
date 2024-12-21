@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"context"
+	"flag"
+	"fmt"
 	"ica-caldav/ica"
 	"io"
 	"log"
@@ -17,7 +19,12 @@ import (
 )
 
 func main() {
-	authenticator := ica.NewBankIDAuthentication()
+	cacheDir := flag.String("cachePath", ".cache", "Path where we save session-data etc")
+	flag.Parse()
+
+	cache := CacheFS{*cacheDir}
+	authenticator := ica.NewBankIDAuthentication(cache)
+
 	htmlHandler := newServerForSetup(&authenticator)
 	caldavHandler := withListCache(
 		&authenticator,
@@ -27,7 +34,9 @@ func main() {
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	slog.SetDefault(logger)
-	slog.Info("Starting")
+	slog.Info("Starting",
+		"hasValidSession", authenticator.HasValidSession(),
+	)
 
 	log.Fatal(http.ListenAndServe(":5000", withLogging(handler)))
 }
@@ -87,4 +96,42 @@ type LoggingResponseWriter struct {
 func (r *LoggingResponseWriter) Write(b []byte) (int, error) {
 	r.body += string(b)
 	return r.ResponseWriter.Write(b)
+}
+
+type CacheFS struct {
+	path string
+}
+
+func (fs CacheFS) ReadFile(path string) ([]byte, error) {
+	fullPath := fmt.Sprintf("%v/%v", fs.path, path)
+	return os.ReadFile(fullPath)
+}
+
+func (fs CacheFS) WriteFile(path string, b []byte) error {
+	fullPath := fmt.Sprintf("%v/%v", fs.path, path)
+	return os.WriteFile(fullPath, b, os.ModeAppend)
+}
+
+type CacheFile struct {
+	name string
+}
+
+func (f CacheFile) Read(b []byte) (int, error) {
+	log.Println("Reading", len(b))
+	file, err := os.Open(f.name)
+	if err != nil {
+		return 0, err
+	}
+	return file.Read(b)
+}
+
+func (f CacheFile) Write(b []byte) (int, error) {
+	file, err := os.Open(f.name)
+	if err != nil {
+		file, err = os.Create(f.name)
+		if err != nil {
+			return 0, err
+		}
+	}
+	return file.Write(b)
 }
