@@ -74,7 +74,7 @@ func (a *BankIDAuthenticator) Start() error {
 	return err
 }
 
-func (a *BankIDAuthenticator) State() (isFinished bool, qrCode string, err error) {
+func (a *BankIDAuthenticator) Poll() (isFinished bool, qrCode string, err error) {
 	bankIDPollUrl := "https://ims.icagruppen.se/authn/authenticate/icase-bankid-qr/wait"
 	req, err := http.NewRequest("POST", bankIDPollUrl, nil)
 	if err != nil {
@@ -150,6 +150,19 @@ func (a *BankIDAuthenticator) finish() error {
 	}
 
 	return err
+}
+
+func (a *BankIDAuthenticator) HasStarted() bool {
+    if a.HasValidSession() {
+        return true
+    } else {
+        imsURL, err := url.Parse("https://ims.icagruppen.se")
+        if err != nil {
+            return false
+        }
+        cookies := a.client.Jar.Cookies(imsURL)
+        return len(cookies) != 0
+    }
 }
 
 func (a *BankIDAuthenticator) HasValidSession() bool {

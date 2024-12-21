@@ -11,39 +11,64 @@ func newServerForSetup(authenticator *ica.BankIDAuthenticator) http.Handler {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/", func(rw http.ResponseWriter, r *http.Request) {
-		// TODO: Check if we actually need setup first
-		executeTemplate(rw, "index.html", nil)
+		executeTemplate(rw, "index.html", getState(authenticator))
 	})
 
 	mux.HandleFunc("/start", func(rw http.ResponseWriter, r *http.Request) {
 		err := authenticator.Start()
 		if err != nil {
-			executeTemplate(rw, "error.html", err)
-			return
-		}
-
-		isFinished, qrCode, err := authenticator.State()
-		if err != nil {
-			executeTemplate(rw, "error.html", err)
-		} else if isFinished {
-			executeTemplate(rw, "finished.html", nil)
+            state := SetupState {
+                Error: err,
+            }
+			executeTemplate(rw, "status", state)
 		} else {
-			executeTemplate(rw, "bank-id.html", qrCode)
-		}
+            executeTemplate(rw, "status", getState(authenticator))
+        }
 	})
 
 	mux.HandleFunc("/status", func(rw http.ResponseWriter, r *http.Request) {
-		isFinished, qrCode, err := authenticator.State()
-		if err != nil {
-			executeTemplate(rw, "error.html", err)
-		} else if isFinished {
-			executeTemplate(rw, "finished.html", nil)
-		} else {
-			executeTemplate(rw, "bank-id.html", qrCode)
-		}
+        executeTemplate(rw, "status", getState(authenticator))
 	})
 
 	return mux
+}
+
+type SetupState struct {
+    Started bool
+    IsComplete bool
+    Error error
+    QRCode string
+}
+
+func getState(authenticator *ica.BankIDAuthenticator) SetupState {
+    if authenticator.HasValidSession() {
+        return SetupState {
+            Started: true,
+            IsComplete: true,
+        }
+    } else if !authenticator.HasStarted() {
+        return SetupState {
+            Started: false,
+        }
+    } else {
+        isFinished, qrCode, err := authenticator.Poll()
+        if isFinished {
+            return SetupState {
+                Started: true,
+                IsComplete: true,
+            }
+        } else if err != nil {
+            return SetupState {
+                Started: true,
+                Error: err,
+            }
+        } else {
+            return SetupState {
+                Started: true,
+                QRCode: qrCode,
+            }
+        }
+    }
 }
 
 // It's probably quicker to just fetch templates once, but this makes it support live-reload.

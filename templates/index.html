@@ -8,12 +8,35 @@
                 <h1>Welcome</h1>
             </header>
 
-            <fieldset id="bank-id" hx-target="this">
-                <legend>Setup with BankID</legend>
-                <button hx-post="/start" hx-swap="outerHTML">
-                    Start
-                </button>
-            </fieldset>
+            {{ template "status" . }}
         </main>
     </body>
 </html>
+
+{{ define "status" }}
+{{ if not .Started }}
+<fieldset id="bank-id" hx-target="this">
+    <legend>Setup with BankID</legend>
+    <button hx-post="/start" hx-swap="outerHTML">
+        Start
+    </button>
+</fieldset>
+{{ else if .IsComplete }}
+<fieldset id="bank-id">
+    <h2>Setup complete!</h2>
+</fieldset>
+{{ else if .Error }}
+<fieldset id="bank-id" hx-target="this">
+    <legend>Something went wrong</legend>
+    {{.Error}}
+    <button hx-post="/start" hx-swap="outerHTML">
+        Restart
+    </button>
+</fieldset>
+{{ else }}
+<fieldset id="bank-id" hx-get="status" hx-swap="outerHTML transition:true" hx-trigger="every 2s">
+    <legend>Scan with BankID</legend>
+    <img src="{{.QRCode}}" />
+</fieldset>
+{{ end }}
+{{ end }}
