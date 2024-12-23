@@ -22,6 +22,9 @@ func main() {
 	cacheDir := flag.String("cachePath", ".cache", "Path where we save session-data etc")
 	flag.Parse()
 
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	slog.SetDefault(logger)
+
 	cache := CacheFS{*cacheDir}
 	authenticator := ica.NewBankIDAuthentication(cache)
 
@@ -32,8 +35,6 @@ func main() {
 
 	handler := mux(htmlHandler, caldavHandler)
 
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
-	slog.SetDefault(logger)
 	slog.Info("Starting",
 		"hasValidSession", authenticator.HasValidSession(),
 	)

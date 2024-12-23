@@ -41,7 +41,9 @@ func createCookieJar(cache Cache) http.CookieJar {
 	data, err := cache.ReadFile("session.json")
 	slog.Info("Read done")
 	if err != nil {
-		slog.Info("No cached session found", err)
+		slog.Info("No cached session found",
+			"error", err,
+		)
 		return jar
 	}
 	var cookies []*http.Cookie
@@ -153,16 +155,16 @@ func (a *BankIDAuthenticator) finish() error {
 }
 
 func (a *BankIDAuthenticator) HasStarted() bool {
-    if a.HasValidSession() {
-        return true
-    } else {
-        imsURL, err := url.Parse("https://ims.icagruppen.se")
-        if err != nil {
-            return false
-        }
-        cookies := a.client.Jar.Cookies(imsURL)
-        return len(cookies) != 0
-    }
+	if a.HasValidSession() {
+		return true
+	} else {
+		imsURL, err := url.Parse("https://ims.icagruppen.se")
+		if err != nil {
+			return false
+		}
+		cookies := a.client.Jar.Cookies(imsURL)
+		return len(cookies) != 0
+	}
 }
 
 func (a *BankIDAuthenticator) HasValidSession() bool {
