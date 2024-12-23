@@ -10,5 +10,6 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
 
 FROM alpine:latest
 COPY --from=builder /go/bin/ica-caldav /go/bin/ica-caldav
-VOLUME /org
-CMD ["/bin/sh", "-c", "/go/bin/ica-caldav"]
+
+VOLUME /cache
+CMD ["/bin/sh", "-c", "/go/bin/ica-caldav --cachePath /cache"]
