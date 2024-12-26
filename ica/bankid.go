@@ -7,10 +7,11 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"net/http/cookiejar"
 	"net/url"
 	"regexp"
 	"strings"
+	"sync"
+	"time"
 )
 
 type Cache interface {
@@ -19,45 +20,16 @@ type Cache interface {
 }
 
 type BankIDAuthenticator struct {
-	sessionCache Cache
-	client       *http.Client
+	jar    *cookieJar
+	client *http.Client
 }
 
 func NewBankIDAuthentication(cache Cache) BankIDAuthenticator {
-	jar := createCookieJar(cache)
+	jar := newCookieJar(cache)
 	client := &http.Client{
 		Jar: jar,
 	}
-	return BankIDAuthenticator{cache, client}
-}
-
-func createCookieJar(cache Cache) http.CookieJar {
-	jar, err := cookiejar.New(nil)
-	if err != nil {
-		panic(err)
-	}
-	// Try reading cookies from session file
-	slog.Info("Starting read")
-	data, err := cache.ReadFile("session.json")
-	slog.Info("Read done")
-	if err != nil {
-		slog.Info("No cached session found",
-			"error", err,
-		)
-		return jar
-	}
-	var cookies []*http.Cookie
-	err = json.Unmarshal(data, &cookies)
-	if err != nil {
-		slog.Info("Corrupt cache found", err)
-		return jar
-	}
-	icaURL, err := url.Parse("https://www.ica.se")
-	if err != nil {
-		return jar
-	}
-	jar.SetCookies(icaURL, cookies)
-	return jar
+	return BankIDAuthenticator{jar, client}
 }
 
 func (a *BankIDAuthenticator) Start() error {
@@ -76,7 +48,7 @@ func (a *BankIDAuthenticator) Start() error {
 	return err
 }
 
-func (a *BankIDAuthenticator) Poll() (isFinished bool, qrCode string, err error) {
+func (a *BankIDAuthenticator) Poll() (*time.Time, string, error) {
 	bankIDPollUrl := "https://ims.icagruppen.se/authn/authenticate/icase-bankid-qr/wait"
 	req, err := http.NewRequest("POST", bankIDPollUrl, nil)
 	if err != nil {
@@ -84,78 +56,71 @@ func (a *BankIDAuthenticator) Poll() (isFinished bool, qrCode string, err error)
 	req.Header.Set("Accept", "application/json")
 	resp, err := a.client.Do(req)
 	if err != nil {
-		return false, "", err
+		return nil, "", err
 	}
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return false, "", err
+		return nil, "", err
 	}
 	var response bankIDPollResponse
 	err = json.Unmarshal(data, &response)
 	if err != nil {
-		return false, "", err
+		return nil, "", err
 	}
 
 	if !response.StopPolling {
 		if len(response.Message.QRCode) == 0 {
 			// Something went wrong?
-			return false, "", fmt.Errorf("No QR Code")
+			return nil, "", fmt.Errorf("No QR Code")
 		}
-		return false, response.Message.QRCode, nil
+		return nil, response.Message.QRCode, nil
 	}
 
 	// We're done polling, finish up
-	err = a.finish()
+	sessionValidity, err := a.finish()
 	if err != nil {
-		return false, "", err
+		return nil, "", err
 	}
-	return true, "", nil
+	return sessionValidity, "", nil
 }
 
-func (a *BankIDAuthenticator) finish() error {
+func (a *BankIDAuthenticator) finish() (*time.Time, error) {
 	// Post that we're done, this will return us a html-form with some important values
 	form := url.Values{}
 	form.Set("_pollingDone", "true")
 	payload := bytes.NewBufferString(form.Encode())
 	resp, err := a.client.Post("https://ims.icagruppen.se/authn/authenticate/icase-bankid-qr/launch", "application/x-www-form-urlencoded", payload)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Parse out URL/form data from the above form, so that we can POST it
 	redirectRequest, err := parseRedirectRequest(resp)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	_, err = a.client.Do(redirectRequest)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Verify that we have a valid session
-	if !a.HasValidSession() {
-		return fmt.Errorf("No valid session")
+	sessionValidity := a.SessionValidity()
+	if sessionValidity == nil {
+		return nil, fmt.Errorf("No valid session")
 	}
 
-	icaURL, err := url.Parse("https://www.ica.se")
-	if err == nil {
-		// Write cookies to session file
-		cookies := a.client.Jar.Cookies(icaURL)
-		data, err := json.Marshal(cookies)
-		if err == nil {
-			err = a.sessionCache.WriteFile("session.json", data)
-			if err != nil {
-				slog.Error("Error writing cache", err)
-			}
-		}
+	err = a.jar.Persist()
+	if err != nil {
+		slog.Error("Error writing cache", err)
 	}
 
-	return err
+	return sessionValidity, nil
 }
 
 func (a *BankIDAuthenticator) HasStarted() bool {
-	if a.HasValidSession() {
+	if a.SessionValidity() != nil {
 		return true
 	} else {
 		imsURL, err := url.Parse("https://ims.icagruppen.se")
@@ -167,32 +132,35 @@ func (a *BankIDAuthenticator) HasStarted() bool {
 	}
 }
 
-func (a *BankIDAuthenticator) HasValidSession() bool {
-	_, err := a.getSessionValue()
-	return err == nil
+func (a *BankIDAuthenticator) SessionValidity() *time.Time {
+	cookie, err := a.getSessionCookie()
+	if err != nil {
+		return nil
+	}
+	return &cookie.Expires
 }
 
 func (a *BankIDAuthenticator) GetSession() (*ICA, error) {
-	session, err := a.getSessionValue()
+	cookie, err := a.getSessionCookie()
 	if err != nil {
 		return nil, err
 	}
-	return &ICA{sessionId: session}, nil
+	return &ICA{sessionId: cookie.Value}, nil
 }
 
-func (a *BankIDAuthenticator) getSessionValue() (string, error) {
+func (a *BankIDAuthenticator) getSessionCookie() (*http.Cookie, error) {
 	// Now we should be done, and have a valid `thSession` cookie
 	icaURL, err := url.Parse("https://www.ica.se")
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	for _, cookie := range a.client.Jar.Cookies(icaURL) {
 		if cookie.Name == "thSessionId" {
-			return cookie.Value, nil
+			return cookie, cookie.Valid()
 		}
 	}
 	// No valid cookie, error out
-	return "", fmt.Errorf("No valid cookie returned")
+	return nil, fmt.Errorf("No valid cookie returned")
 }
 
 var formActionRegex regexp.Regexp = *regexp.MustCompile("id=\"form1\" action=\"(.*?)\"")
@@ -246,4 +214,70 @@ type bankIDPollResponse struct {
 
 type bankIDPollResponseMessage struct {
 	QRCode string `json:"qrCode"`
+}
+
+type cookieJar struct {
+	sync.Mutex
+
+	cache   Cache
+	cookies map[string]http.Cookie
+}
+
+func newCookieJar(cache Cache) *cookieJar {
+	jar := cookieJar{
+		cache:   cache,
+		cookies: make(map[string]http.Cookie, 0),
+	}
+
+	// Try reading cookies from session file
+	slog.Info("Starting read")
+	data, err := cache.ReadFile("session.json")
+	slog.Info("Read done")
+	if err != nil {
+		slog.Info("No cached session found",
+			"error", err,
+		)
+		return &jar
+	}
+	var cookies []*http.Cookie
+	err = json.Unmarshal(data, &cookies)
+	if err != nil {
+		slog.Info("Corrupt cache found", err)
+		return &jar
+	}
+	for _, cookie := range cookies {
+		jar.cookies[cookie.Name] = *cookie
+	}
+	return &jar
+}
+
+func (j *cookieJar) SetCookies(url *url.URL, cookies []*http.Cookie) {
+	j.Lock()
+	defer j.Unlock()
+	for _, cookie := range cookies {
+		j.cookies[cookie.Name] = *cookie
+	}
+}
+
+func (j *cookieJar) Cookies(url *url.URL) []*http.Cookie {
+	cookies := make([]*http.Cookie, 0)
+	for name := range j.cookies {
+		cookie := j.cookies[name]
+		cookies = append(cookies, &cookie)
+	}
+	return cookies
+}
+
+func (j *cookieJar) Persist() error {
+	icaURL, err := url.Parse("https://www.ica.se")
+	if err != nil {
+		return err
+	}
+	// Write cookies to session file
+	cookies := j.Cookies(icaURL)
+	data, err := json.Marshal(cookies)
+	if err != nil {
+		return err
+	}
+	return j.cache.WriteFile("session.json", data)
 }

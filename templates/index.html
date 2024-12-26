@@ -21,9 +21,10 @@
         Start
     </button>
 </fieldset>
-{{ else if .IsComplete }}
+{{ else if .ValidUntil }}
 <fieldset id="bank-id">
     <h2>Setup complete!</h2>
+    <h3>Valid until: {{.ValidUntil.Format "2006-01-02 15:04:05"}}</h3>
 </fieldset>
 {{ else if .Error }}
 <fieldset id="bank-id" hx-target="this">

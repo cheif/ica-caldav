@@ -36,7 +36,7 @@ func main() {
 	handler := mux(htmlHandler, caldavHandler)
 
 	slog.Info("Starting",
-		"hasValidSession", authenticator.HasValidSession(),
+		"sessionValiditiy", authenticator.SessionValidity(),
 	)
 
 	log.Fatal(http.ListenAndServe(":5000", withLogging(handler)))

@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"text/template"
+	"time"
 )
 
 func newServerForSetup(authenticator *ica.BankIDAuthenticator) http.Handler {
@@ -36,27 +37,28 @@ func newServerForSetup(authenticator *ica.BankIDAuthenticator) http.Handler {
 
 type SetupState struct {
 	Started    bool
-	IsComplete bool
+	ValidUntil *time.Time
 	Error      error
 	QRCode     string
 }
 
 func getState(authenticator *ica.BankIDAuthenticator) SetupState {
-	if authenticator.HasValidSession() {
+	sessionValidity := authenticator.SessionValidity()
+	if sessionValidity != nil {
 		return SetupState{
 			Started:    true,
-			IsComplete: true,
+			ValidUntil: sessionValidity,
 		}
 	} else if !authenticator.HasStarted() {
 		return SetupState{
 			Started: false,
 		}
 	} else {
-		isFinished, qrCode, err := authenticator.Poll()
-		if isFinished {
+		sessionValidity, qrCode, err := authenticator.Poll()
+		if sessionValidity != nil {
 			return SetupState{
 				Started:    true,
-				IsComplete: true,
+				ValidUntil: sessionValidity,
 			}
 		} else if err != nil {
 			return SetupState{
