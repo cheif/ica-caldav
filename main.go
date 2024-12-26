@@ -20,6 +20,7 @@ import (
 
 func main() {
 	cacheDir := flag.String("cachePath", ".cache", "Path where we save session-data etc")
+	port := flag.String("port", "5000", "HTTP port to use")
 	flag.Parse()
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
@@ -39,7 +40,7 @@ func main() {
 		"sessionValiditiy", authenticator.SessionValidity(),
 	)
 
-	log.Fatal(http.ListenAndServe(":5000", withLogging(handler)))
+	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%v", *port), withLogging(handler)))
 }
 
 func mux(htmlHandler http.Handler, caldavHandler http.Handler) http.Handler {
